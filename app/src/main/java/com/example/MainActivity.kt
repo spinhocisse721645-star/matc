@@ -4,7 +4,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,12 +19,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SportsSoccer
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -35,7 +35,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -63,6 +62,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.Match
 import com.example.data.SupabaseMatchRepository
 import com.example.ui.theme.MyApplicationTheme
+import com.example.util.NetworkUtils
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -81,7 +81,8 @@ sealed class MatchUiState {
     data object Loading : MatchUiState()
     data class Success(val matches: List<Match>) : MatchUiState()
     data object Empty : MatchUiState()
-    data class Error(val message: String) : MatchUiState()
+    data object NoInternet : MatchUiState()
+    data class Error(val message: String = "Impossible de charger les matchs — réessayez plus tard") : MatchUiState()
     data object ConfigNeeded : MatchUiState()
 }
 
@@ -97,10 +98,16 @@ fun MatchApp() {
 
     fun loadMatches() {
         scope.launch {
+            if (!NetworkUtils.isNetworkAvailable(context)) {
+                uiState = MatchUiState.NoInternet
+                return@launch
+            }
+
             if (repository.supabaseUrl.isBlank() || repository.supabaseAnonKey.isBlank()) {
                 uiState = MatchUiState.ConfigNeeded
                 return@launch
             }
+
             uiState = MatchUiState.Loading
             val result = repository.fetchMatchs()
             uiState = result.fold(
@@ -111,8 +118,12 @@ fun MatchApp() {
                         MatchUiState.Success(matches)
                     }
                 },
-                onFailure = { error ->
-                    MatchUiState.Error(error.localizedMessage ?: "Une erreur est survenue")
+                onFailure = {
+                    if (!NetworkUtils.isNetworkAvailable(context)) {
+                        MatchUiState.NoInternet
+                    } else {
+                        MatchUiState.Error("Impossible de charger les matchs — réessayez plus tard")
+                    }
                 }
             )
         }
@@ -227,6 +238,43 @@ fun MatchApp() {
                     }
                 }
 
+                is MatchUiState.NoInternet -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.WifiOff,
+                                contentDescription = "Pas de connexion Internet",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(56.dp)
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "Pas de connexion Internet — vérifiez votre réseau et réessayez",
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    fontWeight = FontWeight.Medium
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(20.dp))
+                            Button(
+                                onClick = { loadMatches() },
+                                modifier = Modifier.testTag("retry_no_internet_button")
+                            ) {
+                                Text("Réessayer")
+                            }
+                        }
+                    }
+                }
+
                 is MatchUiState.Error -> {
                     Box(
                         modifier = Modifier
@@ -238,21 +286,22 @@ fun MatchApp() {
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center
                         ) {
-                            Text(
-                                text = "Impossible de charger les matchs",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.error,
-                                textAlign = TextAlign.Center
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = state.message,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = TextAlign.Center
+                            Icon(
+                                imageVector = Icons.Default.CloudOff,
+                                contentDescription = "Erreur serveur",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(56.dp)
                             )
                             Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = state.message,
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    fontWeight = FontWeight.Medium
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(20.dp))
                             Button(
                                 onClick = { loadMatches() },
                                 modifier = Modifier.testTag("retry_button")
