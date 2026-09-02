@@ -1,0 +1,6 @@
+{
+  "name": "Matchs Football",
+  "description": "Application de suivi des matchs en direct synchronisés avec Supabase",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
